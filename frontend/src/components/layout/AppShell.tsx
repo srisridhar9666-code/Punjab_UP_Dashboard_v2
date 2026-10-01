@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import * as DM from '@radix-ui/react-dropdown-menu'
-import { Activity, ChevronsLeft, ChevronsRight, FileClock, LayoutGrid, LogOut, Menu, Monitor, Moon, Search, ShieldCheck, Sun, Upload, Users, X } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, FileClock, LayoutGrid, LogOut, Menu, Monitor, Moon, Search, ShieldCheck, Sun, Upload, Users, X } from 'lucide-react'
 import { useLogout, useMe } from '@/hooks/useAuth'
 import { setThemePref, useTheme } from '@/hooks/useTheme'
 import { cn } from '@/lib/cn'
+import { COMPANY, CREATOR, CompanyLogo } from '@/components/Brand'
 import { Kbd } from '@/components/ui/Misc'
 import { CommandPalette } from './CommandPalette'
 
@@ -75,13 +76,11 @@ export function AppShell() {
   const sidebar = (isCollapsed: boolean) => (
     <div className="flex h-full flex-col gap-1 p-3">
       <div className={cn('mb-3 flex h-10 items-center gap-2.5 px-1.5', isCollapsed && 'justify-center px-0')}>
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-accent text-white shadow-sm">
-          <Activity className="h-[18px] w-[18px]" strokeWidth={2.4} />
-        </span>
+        <CompanyLogo className="h-9 w-9" />
         {!isCollapsed && (
           <div className="min-w-0 leading-tight">
             <p className="truncate text-[13.5px] font-semibold tracking-[-0.01em]">Call Center Intelligence</p>
-            <p className="truncate text-[11.5px] text-ink-3">Created by <span className="font-semibold text-accent">Sridhar</span></p>
+            <p className="truncate text-[11px] text-ink-3" title={COMPANY}>{COMPANY}</p>
           </div>
         )}
       </div>
@@ -109,6 +108,14 @@ export function AppShell() {
       {isAdmin && <NavItem to="/admin/audit" icon={FileClock} label="Audit log" collapsed={isCollapsed} />}
 
       <div className="mt-auto space-y-1">
+        {!isCollapsed && (
+          <div className="mb-1 rounded-lg border hairline bg-surface px-3 py-2.5 text-[11px] leading-snug text-ink-3">
+            <p>
+              Created by <span className="font-semibold text-accent">{CREATOR}</span>
+            </p>
+            <p className="truncate">© {COMPANY}</p>
+          </div>
+        )}
         <button onClick={toggle} className={cn('hidden h-9 w-full items-center gap-3 rounded-lg px-2.5 text-[13px] text-ink-3 hover:bg-sunken hover:text-ink lg:flex', isCollapsed && 'justify-center px-0')}>
           {isCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
           {!isCollapsed && 'Collapse'}

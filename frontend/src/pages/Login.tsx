@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Activity, Lock, ShieldCheck, Sparkles } from 'lucide-react'
+import { Lock, ShieldCheck, Sparkles } from 'lucide-react'
+import { COMPANY, CREATOR, CompanyLogo } from '@/components/Brand'
 import { post } from '@/lib/api'
 import type { Me } from '@/lib/types'
 import { Button } from '@/components/ui/Button'
@@ -33,10 +34,11 @@ export default function Login() {
         <div className="pointer-events-none absolute -right-40 -top-40 h-[520px] w-[520px] rounded-full bg-[#2a78d6] opacity-30 blur-[120px]" />
         <div className="pointer-events-none absolute -bottom-48 -left-24 h-[420px] w-[420px] rounded-full bg-[#1baf7a] opacity-20 blur-[120px]" />
         <div className="relative flex items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-white/10 ring-1 ring-white/15">
-            <Activity className="h-5 w-5" strokeWidth={2.4} />
+          <CompanyLogo dark className="h-10 w-10" />
+          <span className="leading-tight">
+            <span className="block text-[15px] font-semibold">Call Center Intelligence</span>
+            <span className="block text-[12px] text-white/60">{COMPANY}</span>
           </span>
-          <span className="text-[15px] font-semibold">Call Center Intelligence</span>
         </div>
         <div className="relative mt-auto max-w-md">
           <h1 className="text-[34px] font-semibold leading-[1.15] tracking-[-0.02em]">Field operations and voter sentiment, in one place.</h1>
@@ -49,13 +51,14 @@ export default function Login() {
         </div>
       </div>
 
-      <div className="flex items-center justify-center p-6">
+      <div className="flex flex-col items-center justify-center p-6">
         <form onSubmit={submit} className="w-full max-w-[360px] space-y-5">
           <div className="flex items-center gap-2.5 lg:hidden">
-            <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-accent text-white">
-              <Activity className="h-5 w-5" strokeWidth={2.4} />
+            <CompanyLogo className="h-10 w-10" />
+            <span className="leading-tight">
+              <span className="block text-[15px] font-semibold">Call Center Intelligence</span>
+              <span className="block text-[12px] text-ink-3">{COMPANY}</span>
             </span>
-            <span className="text-[15px] font-semibold">Call Center Intelligence</span>
           </div>
           <div>
             <h2 className="text-[22px] font-semibold tracking-[-0.02em]">Sign in</h2>
@@ -74,7 +77,8 @@ export default function Login() {
           <p className="text-center text-[12px] text-ink-3">Forgot your password? Ask an admin to reset it.</p>
         </form>
         <p className="mt-8 text-center text-[12px] text-ink-3">
-          Created by <span className="font-medium text-ink-2">Sridhar</span>
+          Created by <span className="font-semibold text-accent">{CREATOR}</span>
+          <br />© {COMPANY}
         </p>
       </div>
     </div>
