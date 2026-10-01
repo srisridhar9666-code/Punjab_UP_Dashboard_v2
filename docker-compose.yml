@@ -1,0 +1,56 @@
+# Production-style stack: MySQL + the app (API and UI on one origin).
+#   cp .env.example .env   # then fill in the values
+#   docker compose up -d                     # http://localhost:8000, on the server itself only
+#   docker compose --profile https up -d     # adds Caddy with automatic HTTPS for $DOMAIN
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: callcenter_dashboard
+      MYSQL_USER: ${DB_USER:-callcenter}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes: [dbdata:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:-callcenter}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: callcenter_dashboard
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      FORWARDED_ALLOW_IPS: "*"   # safe because the port below is bound to 127.0.0.1: only Caddy and the server itself can reach the app
+    volumes: [uploads:/app/backend/data]
+    # Not published to the network on purpose: sessions need HTTPS, so other machines go through Caddy (or your own proxy).
+    ports: ["127.0.0.1:${APP_PORT:-8000}:8000"]
+
+  caddy:
+    profiles: ["https"]
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env for the https profile}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+
+volumes:
+  dbdata:
+  uploads:
+  caddydata:

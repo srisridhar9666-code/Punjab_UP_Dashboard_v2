@@ -1,0 +1,48 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements*.txt }
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check app tests && ruff format --check app tests
+      - run: pytest -q
+
+  migrations-mysql:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env: { MYSQL_DATABASE: callcenter_dashboard, MYSQL_USER: ci, MYSQL_PASSWORD: ci-pass, MYSQL_ROOT_PASSWORD: root-pass }
+        ports: ["3306:3306"]
+        options: --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot-pass" --health-interval=5s --health-retries=20
+    defaults: { run: { working-directory: backend } }
+    env:
+      SECRET_KEY: ci-only-secret-key-not-used-anywhere-else-123456
+      DB_HOST: 127.0.0.1
+      DB_USER: ci
+      DB_PASSWORD: ci-pass
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - run: alembic upgrade head && alembic downgrade base && alembic upgrade head
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
