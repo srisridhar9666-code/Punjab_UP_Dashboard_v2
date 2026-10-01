@@ -6,7 +6,7 @@ import type { AcRow, CallCenter, Day, DistrictRow, Heatmap, Overview } from '@/l
 import { day, num, num1, pct } from '@/lib/format'
 import { downloadCsv } from '@/lib/csv'
 import { cn } from '@/lib/cn'
-import { Delta, Ring, Stat } from '@/components/ui/Stat'
+import { Delta, Stat } from '@/components/ui/Stat'
 import { Empty, Input, Segmented, Skeleton } from '@/components/ui/Misc'
 import { Button } from '@/components/ui/Button'
 import { Card, CardHeader } from '@/components/ui/Card'
@@ -16,6 +16,7 @@ import { HeatmapChart } from '@/components/charts/HeatmapChart'
 import { Sparkline } from '@/components/charts/Sparkline'
 import { ProgressBar, RankedBars } from '@/components/charts/Bars'
 import { useStateCtx } from './StateLayout'
+import { BracketPanel, DistributionChart, SeatMap, TrackerHero, bracketLabels, bracketOf, defaultCuts, type Bracket } from './AssemblyTracker'
 
 type Health = 'done' | 'on-track' | 'slow' | 'stalled'
 
@@ -42,7 +43,7 @@ function HealthPill({ h }: { h: Health }) {
   )
 }
 
-function AcTable({ rows, loading }: { rows: AcRow[]; loading: boolean }) {
+function AcTable({ rows, loading, cuts, bracket }: { rows: AcRow[]; loading: boolean; cuts: [number, number, number]; bracket: Bracket | null }) {
   const { meta } = useStateCtx()
   const { set } = useFilters()
   const [q, setQ] = useState('')
@@ -58,13 +59,13 @@ function AcTable({ rows, loading }: { rows: AcRow[]; loading: boolean }) {
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase()
     return rows
-      .filter((r) => (view === 'all' || health(r) === view) && (!needle || r.ac.toLowerCase().includes(needle) || (r.district ?? '').toLowerCase().includes(needle)))
+      .filter((r) => (!bracket || bracketOf(r.complete, cuts) === bracket) && (view === 'all' || health(r) === view) && (!needle || r.ac.toLowerCase().includes(needle) || (r.district ?? '').toLowerCase().includes(needle)))
       .sort((a, b) => {
         const av = a[sort.key] ?? Infinity
         const bv = b[sort.key] ?? Infinity
         return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir
       })
-  }, [rows, q, view, sort])
+  }, [rows, q, view, sort, bracket, cuts])
 
   const th = (key: typeof sort.key, label: string, right = false) => (
     <th className={cn('px-3 py-2.5 font-medium', right && 'text-right')}>
@@ -78,7 +79,7 @@ function AcTable({ rows, loading }: { rows: AcRow[]; loading: boolean }) {
   return (
     <Card>
       <CardHeader
-        title="Constituency progress"
+        title={bracket ? `Constituency progress · ${bracketLabels(cuts)[bracket].title}` : 'Constituency progress'}
         subtitle={`Targets: ${meta.phases.map((p) => `${p.name} ${p.target}`).join(' · ')} complete interviews per AC. Pace uses the last 7 days of data; ETA is to the next target. Slow means more than 7 days to go, stalled means no completes in 7 days.`}
         actions={
           <Button
@@ -195,9 +196,23 @@ export default function Operations() {
 
   const latest = o?.latest_day
   const prev = o?.previous_day
+  const [cuts, setCuts] = useState<[number, number, number]>(() => defaultCuts(meta.phases.map((p) => p.target)))
+  const [bracket, setBracket] = useState<Bracket | null>(null)
   return (
     <div className="space-y-5 animate-fade-in">
-      <div className={cn('grid grid-cols-2 gap-3 lg:grid-cols-3', meta.phases.length > 1 ? 'xl:grid-cols-5' : 'xl:grid-cols-4')}>
+      {acs.data ? <TrackerHero rows={acs.data} overview={o} /> : <Skeleton className="h-[220px] rounded-xl" />}
+      {acs.data && <BracketPanel rows={acs.data} cuts={cuts} setCuts={setCuts} active={bracket} setActive={setBracket} />}
+      {acs.data && (
+        <div className="grid gap-5 xl:grid-cols-5">
+          <div className="xl:col-span-3">
+            <SeatMap rows={acs.data} cuts={cuts} active={bracket} />
+          </div>
+          <div className="xl:col-span-2">
+            <DistributionChart rows={acs.data} cuts={cuts} />
+          </div>
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <Stat
           loading={!o}
           label="Complete interviews"
@@ -213,21 +228,6 @@ export default function Operations() {
           delta={latest && prev && <Delta value={latest.complete - prev.complete} title={`vs ${day(prev.date)}`} />}
           sub={latest ? `${day(latest.date, { weekday: 'short', day: 'numeric', month: 'short' })} · 7-day avg ${num(Math.round(o?.avg_daily_complete_7d ?? 0))}` : '—'}
         />
-        {(o?.phases ?? meta.phases.map((p) => ({ ...p, done: 0, acs: 0 }))).map((p) => (
-          <Stat
-            key={p.name}
-            loading={!o}
-            label={`${p.name} · ${p.target} per AC`}
-            value={
-              <>
-                {p.done}
-                <span className="text-[15px] font-normal text-ink-3"> / {p.acs}</span>
-              </>
-            }
-            sub="ACs at target"
-            chart={<Ring value={p.done} max={p.acs} />}
-          />
-        ))}
       </div>
 
       <div className="grid gap-5 xl:grid-cols-3">
@@ -271,7 +271,7 @@ export default function Operations() {
         {heat.data ? heat.data.rows.length ? <HeatmapChart data={heat.data} /> : <Empty /> : <Skeleton className="h-[320px]" />}
       </ChartCard>
 
-      {acs.data ? <AcTable rows={acs.data} loading={acs.isFetching} /> : <Skeleton className="h-[480px] rounded-xl" />}
+      {acs.data ? <AcTable rows={acs.data} loading={acs.isFetching} cuts={cuts} bracket={bracket} /> : <Skeleton className="h-[480px] rounded-xl" />}
     </div>
   )
 }

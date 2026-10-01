@@ -73,6 +73,9 @@ export default function Login() {
           </Button>
           <p className="text-center text-[12px] text-ink-3">Forgot your password? Ask an admin to reset it.</p>
         </form>
+        <p className="mt-8 text-center text-[12px] text-ink-3">
+          Created by <span className="font-medium text-ink-2">Sridhar</span>
+        </p>
       </div>
     </div>
   )
