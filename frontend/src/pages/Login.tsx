@@ -34,7 +34,7 @@ export default function Login() {
         <div className="pointer-events-none absolute -right-40 -top-40 h-[520px] w-[520px] rounded-full bg-[#2a78d6] opacity-30 blur-[120px]" />
         <div className="pointer-events-none absolute -bottom-48 -left-24 h-[420px] w-[420px] rounded-full bg-[#1baf7a] opacity-20 blur-[120px]" />
         <div className="relative flex items-center gap-2.5">
-          <CompanyLogo dark className="h-10 w-10" />
+          <CompanyLogo dark className="h-14" />
           <span className="leading-tight">
             <span className="block text-[15px] font-semibold">Call Center Intelligence</span>
             <span className="block text-[12px] text-white/60">{COMPANY}</span>
@@ -54,7 +54,7 @@ export default function Login() {
       <div className="flex flex-col items-center justify-center p-6">
         <form onSubmit={submit} className="w-full max-w-[360px] space-y-5">
           <div className="flex items-center gap-2.5 lg:hidden">
-            <CompanyLogo className="h-10 w-10" />
+            <CompanyLogo className="h-12" />
             <span className="leading-tight">
               <span className="block text-[15px] font-semibold">Call Center Intelligence</span>
               <span className="block text-[12px] text-ink-3">{COMPANY}</span>

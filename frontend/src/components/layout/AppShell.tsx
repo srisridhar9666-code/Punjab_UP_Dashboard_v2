@@ -75,12 +75,12 @@ export function AppShell() {
 
   const sidebar = (isCollapsed: boolean) => (
     <div className="flex h-full flex-col gap-1 p-3">
-      <div className={cn('mb-3 flex h-10 items-center gap-2.5 px-1.5', isCollapsed && 'justify-center px-0')}>
-        <CompanyLogo className="h-9 w-9" />
+      <div className={cn('mb-3 flex h-12 items-center gap-3 px-1.5', isCollapsed && 'justify-center px-0')}>
+        <CompanyLogo className="h-11" />
         {!isCollapsed && (
           <div className="min-w-0 leading-tight">
             <p className="truncate text-[13.5px] font-semibold tracking-[-0.01em]">Call Center Intelligence</p>
-            <p className="truncate text-[11px] text-ink-3" title={COMPANY}>{COMPANY}</p>
+            <p className="text-[11px] leading-snug text-ink-3">{COMPANY}</p>
           </div>
         )}
       </div>
