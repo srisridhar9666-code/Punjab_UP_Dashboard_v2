@@ -81,7 +81,7 @@ export function AppShell() {
         {!isCollapsed && (
           <div className="min-w-0 leading-tight">
             <p className="truncate text-[13.5px] font-semibold tracking-[-0.01em]">Call Center Intelligence</p>
-            <p className="truncate text-[11.5px] text-ink-3">Punjab · Uttar Pradesh</p>
+            <p className="truncate text-[11.5px] text-ink-3">Created by <span className="font-semibold text-accent">Sridhar</span></p>
           </div>
         )}
       </div>
@@ -109,11 +109,6 @@ export function AppShell() {
       {isAdmin && <NavItem to="/admin/audit" icon={FileClock} label="Audit log" collapsed={isCollapsed} />}
 
       <div className="mt-auto space-y-1">
-        {!isCollapsed && (
-          <p className="px-2.5 pb-1 text-[11px] text-ink-3">
-            Created by <span className="font-medium text-ink-2">Sridhar</span>
-          </p>
-        )}
         <button onClick={toggle} className={cn('hidden h-9 w-full items-center gap-3 rounded-lg px-2.5 text-[13px] text-ink-3 hover:bg-sunken hover:text-ink lg:flex', isCollapsed && 'justify-center px-0')}>
           {isCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
           {!isCollapsed && 'Collapse'}

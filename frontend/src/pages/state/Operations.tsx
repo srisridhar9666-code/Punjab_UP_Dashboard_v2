@@ -1,45 +1,37 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, PauseCircle, Search, TrendingUp } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { useStateQuery } from '@/hooks/useStateData'
 import { useFilters } from '@/hooks/useFilters'
-import type { AcRow, CallCenter, Day, DistrictRow, Heatmap, Overview } from '@/lib/types'
-import { day, num, num1, pct } from '@/lib/format'
+import type { AcRow, Day, Overview } from '@/lib/types'
+import { day, num, pct } from '@/lib/format'
 import { downloadCsv } from '@/lib/csv'
 import { cn } from '@/lib/cn'
 import { Delta, Stat } from '@/components/ui/Stat'
-import { Empty, Input, Segmented, Skeleton } from '@/components/ui/Misc'
+import { Empty, Input, Skeleton } from '@/components/ui/Misc'
 import { Button } from '@/components/ui/Button'
 import { Card, CardHeader } from '@/components/ui/Card'
 import { ChartCard } from '@/components/charts/ChartCard'
 import { TrendChart } from '@/components/charts/TrendChart'
-import { HeatmapChart } from '@/components/charts/HeatmapChart'
 import { Sparkline } from '@/components/charts/Sparkline'
-import { ProgressBar, RankedBars } from '@/components/charts/Bars'
 import { useStateCtx } from './StateLayout'
-import { BracketPanel, DistributionChart, SeatMap, TrackerHero, bracketLabels, bracketOf, defaultCuts, type Bracket } from './AssemblyTracker'
+import { BracketPanel, TrackerHero, bracketLabels, bracketOf, defaultCuts, type Bracket } from './AssemblyTracker'
 
-type Health = 'done' | 'on-track' | 'slow' | 'stalled'
+type SortKey = 'ac' | 'district' | 'complete' | 'partial' | 'p0' | 'p1' | 'last_date'
 
-function health(r: AcRow): Health {
-  if (r.remaining === 0) return 'done'
-  if (r.pace_7d === 0) return 'stalled'
-  if (r.eta_days !== null && r.eta_days > 7) return 'slow'
-  return 'on-track'
-}
-
-const HEALTH = {
-  done: { label: 'All targets met', icon: CheckCircle2, cls: 'text-good bg-good/10' },
-  'on-track': { label: 'On pace', icon: TrendingUp, cls: 'text-accent-ink bg-accent-soft' },
-  slow: { label: 'Slow', icon: AlertTriangle, cls: 'text-warn bg-warn/15' },
-  stalled: { label: 'Stalled', icon: PauseCircle, cls: 'text-bad bg-bad/10' },
-} as const
-
-function HealthPill({ h }: { h: Health }) {
-  const H = HEALTH[h]
+/** v1-style phase bar: "count/target (pct%)" over a bar that turns green when the phase is met. */
+function PhaseBar({ count, target, pct: p, done, color }: { count: number; target: number; pct: number; done: boolean; color: string }) {
+  const v = Math.min(p, 100)
   return (
-    <span className={cn('inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px] font-medium', H.cls)}>
-      <H.icon className="h-3 w-3" strokeWidth={2.2} /> {H.label}
-    </span>
+    <div className="w-full min-w-[150px]">
+      <div className="mb-1 flex justify-end">
+        <span className={cn('tabular text-[11.5px] font-semibold', done ? 'text-good' : 'text-ink-2')}>
+          {num(count)}/{num(target)} ({v.toFixed(0)}%)
+        </span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-sunken">
+        <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${v}%`, background: done ? 'rgb(var(--good))' : color }} />
+      </div>
+    </div>
   )
 }
 
@@ -47,40 +39,44 @@ function AcTable({ rows, loading, cuts, bracket }: { rows: AcRow[]; loading: boo
   const { meta } = useStateCtx()
   const { set } = useFilters()
   const [q, setQ] = useState('')
-  const [view, setView] = useState<'all' | Health>('all')
-  const [sort, setSort] = useState<{ key: 'ac' | 'complete' | 'pace_7d' | 'eta_days' | 'remaining'; dir: 1 | -1 }>({ key: 'remaining', dir: -1 })
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'p0', dir: -1 })
+  const phaseColors = ['rgb(var(--accent))', '#7c5cd6']
 
-  const counts = useMemo(() => {
-    const c: Record<string, number> = { all: rows.length, done: 0, 'on-track': 0, slow: 0, stalled: 0 }
-    rows.forEach((r) => c[health(r)]++)
-    return c
-  }, [rows])
+  const value = (r: AcRow, k: SortKey): string | number => {
+    if (k === 'p0') return r.phases[0]?.pct ?? 0
+    if (k === 'p1') return r.phases[1]?.pct ?? 0
+    if (k === 'district') return r.district ?? ''
+    if (k === 'last_date') return r.last_date ?? ''
+    return r[k]
+  }
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase()
     return rows
-      .filter((r) => (!bracket || bracketOf(r.complete, cuts) === bracket) && (view === 'all' || health(r) === view) && (!needle || r.ac.toLowerCase().includes(needle) || (r.district ?? '').toLowerCase().includes(needle)))
+      .filter((r) => (!bracket || bracketOf(r.complete, cuts) === bracket) && (!needle || r.ac.toLowerCase().includes(needle) || (r.district ?? '').toLowerCase().includes(needle)))
       .sort((a, b) => {
-        const av = a[sort.key] ?? Infinity
-        const bv = b[sort.key] ?? Infinity
-        return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir
+        const av = value(a, sort.key)
+        const bv = value(b, sort.key)
+        const cmp = typeof av === 'string' ? av.localeCompare(bv as string) : av - (bv as number)
+        return cmp * sort.dir
       })
-  }, [rows, q, view, sort, bracket, cuts])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, q, sort, bracket, cuts])
 
-  const th = (key: typeof sort.key, label: string, right = false) => (
-    <th className={cn('px-3 py-2.5 font-medium', right && 'text-right')}>
-      <button className="inline-flex items-center gap-1 hover:text-ink" onClick={() => setSort((s) => ({ key, dir: s.key === key ? ((-s.dir) as 1 | -1) : key === 'ac' ? 1 : -1 }))}>
+  const th = (key: SortKey, label: string, extra = '') => (
+    <th className={cn('cursor-pointer select-none px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3 hover:text-ink', extra)} onClick={() => setSort((s) => ({ key, dir: s.key === key ? ((-s.dir) as 1 | -1) : -1 }))}>
+      <span className="inline-flex items-center gap-1">
         {label}
-        {sort.key === key && <span aria-hidden>{sort.dir === 1 ? '↑' : '↓'}</span>}
-      </button>
+        {sort.key === key ? sort.dir === 1 ? <ChevronUp className="h-3 w-3 text-accent" /> : <ChevronDown className="h-3 w-3 text-accent" /> : <ChevronUp className="h-3 w-3 opacity-30" />}
+      </span>
     </th>
   )
 
   return (
-    <Card>
+    <Card className="overflow-hidden">
       <CardHeader
-        title={bracket ? `Constituency progress · ${bracketLabels(cuts)[bracket].title}` : 'Constituency progress'}
-        subtitle={`Targets: ${meta.phases.map((p) => `${p.name} ${p.target}`).join(' · ')} complete interviews per AC. Pace uses the last 7 days of data; ETA is to the next target. Slow means more than 7 days to go, stalled means no completes in 7 days.`}
+        title={bracket ? `Assembly constituency progress · ${bracketLabels(cuts)[bracket].title}` : 'Assembly constituency progress'}
+        subtitle={`Targets: ${meta.phases.map((p) => `${p.name} ${p.target}`).join(' · ')} complete interviews per AC`}
         actions={
           <Button
             size="sm"
@@ -88,7 +84,7 @@ function AcTable({ rows, loading, cuts, bracket }: { rows: AcRow[]; loading: boo
             onClick={() =>
               downloadCsv(
                 `${meta.key}-constituency-progress.csv`,
-                shown.map((r) => ({ AC: r.ac, District: r.district, Complete: r.complete, Partial: r.partial, 'Next target': r.next_phase ?? 'All met', Remaining: r.remaining, 'Per day (7d)': r.pace_7d, 'ETA days': r.eta_days, Status: HEALTH[health(r)].label, 'Last interview': r.last_date })),
+                shown.map((r) => ({ AC: r.ac, District: r.district, Complete: r.complete, Partial: r.partial, ...Object.fromEntries(r.phases.map((p) => [`${p.name} %`, p.pct])), 'Last survey': r.last_date })),
               )
             }
           >
@@ -96,91 +92,59 @@ function AcTable({ rows, loading, cuts, bracket }: { rows: AcRow[]; loading: boo
           </Button>
         }
       />
-      <div className="flex flex-wrap items-center gap-2 px-5 pt-4">
-        <Segmented
-          value={view}
-          onChange={setView}
-          options={(['all', 'stalled', 'slow', 'on-track', 'done'] as const).map((v) => ({ value: v, label: `${v === 'all' ? 'All' : HEALTH[v].label} ${counts[v]}` }))}
-        />
-        <div className="relative ml-auto w-full sm:w-64">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search constituency or district" className="h-8 pl-8 text-[13px]" />
+      <div className="mt-3 border-y hairline px-5 py-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search AC or district…" className="pl-9" />
         </div>
       </div>
-      <div className={cn('scroll-thin mt-3 max-h-[560px] overflow-auto transition-opacity', loading && 'opacity-60')}>
-        <table className="w-full min-w-[820px] text-[13px]">
-          <thead className="sticky top-0 z-10 bg-surface text-left text-[12px] text-ink-3 shadow-[0_1px_0_rgb(var(--line))]">
+      <div className="flex flex-wrap gap-4 border-b hairline px-5 py-2 text-[12px] text-ink-3">
+        <span>{shown.length} ACs shown</span>
+        {meta.phases.map((p, i) => (
+          <span key={p.name} className={cn('inline-flex items-center gap-1 font-medium', i === 0 ? 'text-good' : 'text-accent-ink')}>
+            <CheckCircle2 className="h-3.5 w-3.5" /> {p.name} done: {shown.filter((r) => r.phases[i]?.done).length}
+          </span>
+        ))}
+      </div>
+      <div className={cn('scroll-thin max-h-[640px] overflow-auto transition-opacity', loading && 'opacity-60')}>
+        <table className="w-full min-w-[860px] text-[13px]">
+          <thead className="sticky top-0 z-10 bg-raised shadow-[0_1px_0_rgb(var(--line))]">
             <tr>
-              {th('ac', 'Constituency')}
-              <th className="px-3 py-2.5 font-medium">Status</th>
-              {meta.phases.map((p) => (
-                <th key={p.name} className="w-[160px] px-3 py-2.5 font-medium">
-                  {p.name}
-                </th>
-              ))}
-              {th('complete', 'Complete', true)}
-              {th('pace_7d', 'Per day', true)}
-              {th('eta_days', 'ETA next target', true)}
-              <th className="px-3 py-2.5 text-right font-medium">Last call</th>
+              {th('ac', 'AC name')}
+              {th('district', 'District')}
+              {th('complete', 'Complete')}
+              {th('partial', 'Partial')}
+              {meta.phases.map((p, i) => th(i === 0 ? 'p0' : 'p1', `${p.name} progress`, 'min-w-[180px]'))}
+              {th('last_date', 'Last survey')}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-[rgb(var(--line))]">
             {shown.map((r) => (
-              <tr key={`${r.ac}-${r.district}`} className="border-b hairline last:border-0 hover:bg-raised">
-                <td className="px-3 py-2.5">
+              <tr key={`${r.ac}-${r.district}`} className="transition-colors hover:bg-raised">
+                <td className="px-4 py-3">
                   <button className="text-left font-medium text-ink hover:text-accent" onClick={() => set({ district: r.district ?? undefined, ac: r.ac })}>
                     {r.ac}
                   </button>
-                  <div className="text-[11.5px] text-ink-3">{r.district}</div>
                 </td>
-                <td className="px-3 py-2.5">
-                  <HealthPill h={health(r)} />
-                </td>
-                {r.phases.map((p) => (
-                  <td key={p.name} className="px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <ProgressBar value={p.count} max={p.target - (meta.phases[meta.phases.findIndex((x) => x.name === p.name) - 1]?.target ?? 0)} tone={p.done ? 'good' : 'accent'} label={`${p.name} ${p.pct}%`} />
-                      <span className="tabular w-10 text-right text-[12px] text-ink-2">{p.pct.toFixed(0)}%</span>
-                    </div>
-                  </td>
-                ))}
-                <td className="tabular px-3 py-2.5 text-right font-medium">{num(r.complete)}</td>
-                <td className="tabular px-3 py-2.5 text-right text-ink-2">{num1(r.pace_7d)}</td>
-                <td className="tabular px-3 py-2.5 text-right text-ink-2" title={r.next_phase ? `${r.remaining} to go for ${r.next_phase}` : undefined}>{r.eta_days === null ? '—' : r.eta_days < 0 ? 'no pace' : `${r.eta_days} d`}</td>
-                <td className="tabular px-3 py-2.5 text-right text-ink-3">{r.last_date ? day(r.last_date) : '—'}</td>
+                <td className="px-4 py-3 text-ink-3">{r.district ?? '—'}</td>
+                <td className="tabular px-4 py-3 font-semibold text-good">{num(r.complete)}</td>
+                <td className="tabular px-4 py-3 text-warn">{num(r.partial)}</td>
+                {r.phases.map((p, i) => {
+                  const base = i === 0 ? 0 : meta.phases[i - 1].target
+                  return (
+                    <td key={p.name} className="px-4 py-3">
+                      <PhaseBar count={p.count} target={p.target - base} pct={p.pct} done={p.done} color={phaseColors[i] ?? phaseColors[0]} />
+                    </td>
+                  )
+                })}
+                <td className="tabular px-4 py-3 text-[12px] text-ink-3">{r.last_date ? day(r.last_date, { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {!shown.length && <Empty title={rows.length ? 'No constituencies match' : 'No data for this selection'} />}
+        {!shown.length && <Empty title={rows.length ? 'No constituencies match' : 'No data found'} />}
       </div>
     </Card>
-  )
-}
-
-function CallCenters({ rows }: { rows: CallCenter[] }) {
-  const max = Math.max(...rows.map((r) => r.complete_per_day), 1)
-  return (
-    <ChartCard
-      title="Call center productivity"
-      subtitle="Complete interviews per active day, and share of calls completed"
-      table={rows.map((r) => ({ Center: r.center, Complete: r.complete, Partial: r.partial, 'Completion %': r.completion_rate, 'Active days': r.active_days, 'Complete / day': r.complete_per_day }))}
-      filename="call-centers.csv"
-    >
-      <ul className="space-y-4">
-        {rows.map((r) => (
-          <li key={r.center}>
-            <div className="mb-1.5 flex items-baseline justify-between text-[13px]">
-              <span className="font-medium">{r.center}</span>
-              <span className="tabular text-ink-2">
-                <b className="text-ink">{num1(r.complete_per_day)}</b>/day · {pct(r.completion_rate, 0)} complete
-              </span>
-            </div>
-            <ProgressBar value={r.complete_per_day} max={max} label={`${r.center} completes per day`} />
-          </li>
-        ))}
-      </ul>
-    </ChartCard>
   )
 }
 
@@ -189,29 +153,17 @@ export default function Operations() {
   const ov = useStateQuery<Overview>(state, 'overview', {}, { status: 'All' })
   const trend = useStateQuery<Day[]>(state, 'trend', {}, { status: 'All' })
   const acs = useStateQuery<AcRow[]>(state, 'ac-progress', {}, { status: 'All' })
-  const heat = useStateQuery<Heatmap>(state, 'heatmap', {}, { status: 'All' })
-  const dist = useStateQuery<DistrictRow[]>(state, 'districts', {}, { status: 'All' })
-  const cc = useStateQuery<CallCenter[]>(state, 'call-centers', {}, { status: 'All' })
   const o = ov.data
-
   const latest = o?.latest_day
   const prev = o?.previous_day
   const [cuts, setCuts] = useState<[number, number, number]>(() => defaultCuts(meta.phases.map((p) => p.target)))
   const [bracket, setBracket] = useState<Bracket | null>(null)
+
   return (
     <div className="space-y-5 animate-fade-in">
       {acs.data ? <TrackerHero rows={acs.data} overview={o} /> : <Skeleton className="h-[220px] rounded-xl" />}
       {acs.data && <BracketPanel rows={acs.data} cuts={cuts} setCuts={setCuts} active={bracket} setActive={setBracket} />}
-      {acs.data && (
-        <div className="grid gap-5 xl:grid-cols-5">
-          <div className="xl:col-span-3">
-            <SeatMap rows={acs.data} cuts={cuts} active={bracket} />
-          </div>
-          <div className="xl:col-span-2">
-            <DistributionChart rows={acs.data} cuts={cuts} />
-          </div>
-        </div>
-      )}
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <Stat
           loading={!o}
@@ -230,45 +182,14 @@ export default function Operations() {
         />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-3">
-        <ChartCard
-          className="xl:col-span-2"
-          title="Daily interviews"
-          subtitle="Complete and partial calls per day"
-          loading={trend.isFetching}
-          table={trend.data?.map((d) => ({ Date: d.date, Complete: d.complete, Partial: d.partial, Total: d.total }))}
-          filename={`${state}-daily.csv`}
-        >
-          {trend.data ? trend.data.length ? <TrendChart data={trend.data} /> : <Empty /> : <Skeleton className="h-[260px]" />}
-        </ChartCard>
-        {meta.has_call_centers && cc.data?.length ? (
-          <CallCenters rows={cc.data} />
-        ) : (
-          <ChartCard
-            title="Completion by district"
-            subtitle="Share of calls that were complete"
-            table={dist.data?.map((d) => ({ District: d.district, ACs: d.acs, Complete: d.complete, Partial: d.partial, 'Completion %': d.completion_rate }))}
-            filename={`${state}-districts.csv`}
-          >
-            {dist.data ? (
-              <div className="scroll-thin max-h-[270px] overflow-auto pr-1">
-                <RankedBars items={[...dist.data].sort((a, b) => b.completion_rate - a.completion_rate).map((d) => ({ label: d.district, count: d.complete, pct: d.completion_rate }))} max={100} />
-              </div>
-            ) : (
-              <Skeleton className="h-[260px]" />
-            )}
-          </ChartCard>
-        )}
-      </div>
-
       <ChartCard
-        title="Fieldwork heatmap"
-        subtitle="Complete interviews per district per day. Gaps show days a district wasn't worked."
-        loading={heat.isFetching}
-        table={heat.data?.rows.map((r) => ({ District: r.district, Total: r.total, ...Object.fromEntries(heat.data!.dates.map((d, i) => [d, r.values[i]])) }))}
-        filename={`${state}-heatmap.csv`}
+        title="Daily surveys"
+        subtitle="Complete and partial surveys per day"
+        loading={trend.isFetching}
+        table={trend.data?.map((d) => ({ Date: d.date, Complete: d.complete, Partial: d.partial, Total: d.total }))}
+        filename={`${state}-daily-surveys.csv`}
       >
-        {heat.data ? heat.data.rows.length ? <HeatmapChart data={heat.data} /> : <Empty /> : <Skeleton className="h-[320px]" />}
+        {trend.data ? trend.data.length ? <TrendChart data={trend.data} height={300} /> : <Empty /> : <Skeleton className="h-[300px]" />}
       </ChartCard>
 
       {acs.data ? <AcTable rows={acs.data} loading={acs.isFetching} cuts={cuts} bracket={bracket} /> : <Skeleton className="h-[480px] rounded-xl" />}

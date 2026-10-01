@@ -4,10 +4,8 @@ import type { AcRow, Overview } from '@/lib/types'
 import { num, pct } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import { useTheme } from '@/hooks/useTheme'
-import { useFilters } from '@/hooks/useFilters'
 import { Card, CardHeader } from '@/components/ui/Card'
 import { Tip } from '@/components/ui/Overlay'
-import { EChart, axisStyle, tooltipStyle } from '@/components/charts/EChart'
 import type { Mode } from '@/lib/colors'
 import { useStateCtx } from './StateLayout'
 
@@ -175,7 +173,7 @@ export function BracketPanel({ rows, cuts, setCuts, active, setActive }: { rows:
     <Card>
       <CardHeader
         title="Constituency completion"
-        subtitle="Every assembly seat grouped by complete interviews. Click a group to filter the map and the table."
+        subtitle="Every assembly seat grouped by complete interviews. Click a group to filter the table."
         actions={
           <div className="flex items-center gap-1 rounded-lg bg-sunken p-1 text-[11.5px]">
             <span className="px-1.5 text-ink-3">Cuts</span>
@@ -235,100 +233,6 @@ export function BracketPanel({ rows, cuts, setCuts, active, setActive }: { rows:
             )
           })}
         </div>
-      </div>
-    </Card>
-  )
-}
-
-/** Seat map: one tile per AC, grouped by district, coloured by bracket. */
-export function SeatMap({ rows, cuts, active }: { rows: AcRow[]; cuts: [number, number, number]; active: Bracket | null }) {
-  const [, mode] = useTheme()
-  const { set } = useFilters()
-  const C = BRACKET_COLORS[mode]
-  const L = bracketLabels(cuts)
-  const groups = useMemo(() => {
-    const m = new Map<string, AcRow[]>()
-    rows.forEach((r) => {
-      const k = r.district ?? 'Unknown'
-      m.set(k, [...(m.get(k) ?? []), r])
-    })
-    return [...m.entries()]
-      .map(([d, acs]) => ({ d, acs: acs.sort((a, b) => b.complete - a.complete), done: acs.filter((a) => a.complete >= cuts[2]).length }))
-      .sort((a, b) => b.done / b.acs.length - a.done / a.acs.length || b.acs.length - a.acs.length)
-  }, [rows, cuts])
-
-  return (
-    <Card>
-      <CardHeader title="Seat map" subtitle="One tile per surveyed constituency, grouped by district. Hover for numbers, click to drill in." />
-      <div className="grid gap-x-6 gap-y-4 px-5 pb-5 pt-4 sm:grid-cols-2 xl:grid-cols-3">
-        {groups.map((g) => (
-          <div key={g.d}>
-            <div className="mb-1.5 flex items-baseline justify-between text-[12px]">
-              <button className="truncate font-medium text-ink-2 hover:text-accent" onClick={() => set({ district: g.d, ac: undefined })}>
-                {g.d}
-              </button>
-              <span className="tabular shrink-0 text-ink-3">
-                {g.done}/{g.acs.length} at target
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {g.acs.map((r) => {
-                const b = bracketOf(r.complete, cuts)
-                return (
-                  <Tip key={r.ac} content={`${r.ac}: ${num(r.complete)} complete · ${L[b].title}`}>
-                    <button
-                      onClick={() => set({ district: r.district ?? undefined, ac: r.ac })}
-                      aria-label={`${r.ac}, ${r.complete} complete`}
-                      className="h-[18px] w-[18px] rounded-[4px] transition-transform hover:scale-125"
-                      style={{ background: C[b], opacity: active && active !== b ? 0.18 : 1 }}
-                    />
-                  </Tip>
-                )
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  )
-}
-
-/** Distribution of ACs by complete interviews, with the phase targets marked. */
-export function DistributionChart({ rows, cuts }: { rows: AcRow[]; cuts: [number, number, number] }) {
-  const { meta } = useStateCtx()
-  const max = Math.max(...rows.map((r) => r.complete), cuts[2])
-  const width = max > 300 ? 20 : max > 120 ? 10 : 5
-  const bins = Math.ceil((max + 1) / width)
-  const counts = Array.from({ length: bins }, (_, i) => rows.filter((r) => r.complete >= i * width && r.complete < (i + 1) * width).length)
-  return (
-    <Card>
-      <CardHeader title="How far each seat has got" subtitle={`Number of ACs by complete interviews (bins of ${width}). Dashed lines are the targets.`} />
-      <div className="px-3 pb-3">
-        <EChart
-          height={260}
-          label="Distribution of constituencies by complete interviews"
-          deps={[rows, cuts.join()]}
-          build={(mode, c) => ({
-            grid: { left: 40, right: 16, top: 28, bottom: 30 },
-            tooltip: { ...tooltipStyle(c), trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (p: { dataIndex: number; value: number }[]) => `${p[0].dataIndex * width}–${(p[0].dataIndex + 1) * width - 1} complete<br/><b>${p[0].value}</b> ACs` },
-            xAxis: { type: 'category', data: counts.map((_, i) => i * width), ...axisStyle(c), splitLine: { show: false } },
-            yAxis: { type: 'value', minInterval: 1, ...axisStyle(c), axisLine: { show: false } },
-            series: [
-              {
-                type: 'bar',
-                barCategoryGap: '12%',
-                data: counts.map((v, i) => ({ value: v, itemStyle: { color: BRACKET_COLORS[mode][bracketOf(i * width, cuts)], borderRadius: [4, 4, 0, 0] } })),
-                markLine: {
-                  symbol: 'none',
-                  silent: true,
-                  lineStyle: { color: c.ink2, type: 'dashed', width: 1.5 },
-                  label: { color: c.ink2, fontSize: 11, formatter: '{b}' },
-                  data: meta.phases.map((p) => ({ name: `${p.name} · ${p.target}`, xAxis: Math.floor(p.target / width) })),
-                },
-              },
-            ],
-          })}
-        />
       </div>
     </Card>
   )
